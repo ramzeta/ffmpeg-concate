@@ -19,6 +19,8 @@ Una aplicación de escritorio con interfaz gráfica desarrollada en Python que p
 - 📸 **Extracción de último frame** con control de calidad (alta/media/baja)
 - 🎯 **Modo dual**: Concatenar videos O extraer frames por separado
 - 🖼️ **Frames de alta calidad** con configuraciones optimizadas de FFmpeg
+- 🚀 **Aceleración GPU (CUDA)** para procesamiento ultra-rápido
+- ⚡ **Detección automática** de capacidades NVENC/CUVID
 
 ## 📋 Requisitos del Sistema
 
@@ -29,6 +31,11 @@ Una aplicación de escritorio con interfaz gráfica desarrollada en Python que p
 ### Dependencias de Python
 - `psutil>=5.9.0` - Para monitoreo de CPU
 - `tkinter` - Incluido con Python (interfaz gráfica)
+
+### Requisitos Opcionales (GPU)
+- **Tarjeta NVIDIA** compatible con NVENC (GTX 1050+ o RTX series)
+- **Drivers NVIDIA** actualizados (versión 456.71 o superior)
+- **FFmpeg compilado** con soporte NVENC/CUVID
 
 ## 🚀 Instalación y Configuración
 
@@ -70,10 +77,14 @@ sudo port install ffmpeg
 
 ### ✅ Verificación de Instalación
 
-Ejecuta el script de prueba para verificar que FFmpeg esté correctamente instalado:
+Ejecuta los scripts de prueba para verificar instalación:
 
 ```bash
+# Verificar FFmpeg básico
 python test_ffmpeg.py
+
+# Verificar soporte CUDA/GPU (opcional)
+python test_cuda.py
 ```
 
 ## ⚙️ Variables de Entorno
@@ -142,7 +153,11 @@ python main.py
    - **PC potente**: 85-90%
    - **PC normal**: 70-80% (recomendado)
    - **Laptop**: 60-70%
-2. **Verificar ruta FFmpeg**: Normalmente no necesitas cambiar esto
+2. **GPU/CUDA**: 
+   - ✅ Activar si tienes tarjeta NVIDIA compatible
+   - ⚡ Acelera significativamente el procesamiento
+   - 📊 Reduce uso de CPU durante mejoras de calidad
+3. **Verificar ruta FFmpeg**: Normalmente no necesitas cambiar esto
 
 #### Paso 6: Elegir Modo de Operación 🎯
 
@@ -156,13 +171,25 @@ python main.py
 1. **Verificar configuración**:
    - ✅ Videos en la lista en orden correcto
    - ✅ Archivo de salida configurado
-   - ✅ Configuración de CPU ajustada
-2. **Configurar frame**: Marca/desmarca "También capturar frame al concatenar"
+   - ✅ Configuración de CPU y GPU ajustada
+2. **Configurar opciones**: 
+   - Marca/desmarca "También capturar frame al concatenar"
+   - Selecciona calidad de frame
+   - Activa/desactiva CUDA según tu hardware
 3. **Iniciar proceso**: Haz clic en **"Concatenar Videos"**
 4. **Monitorear progreso**:
    - Observa la barra de progreso
    - Revisa el uso de CPU en tiempo real
-   - La aplicación pausará FFmpeg si el CPU supera el límite
+   - Con CUDA: procesamiento mucho más rápido
+
+**Opción C: Mejorar Calidad 🌟**
+1. **Selecciona videos**: Los videos a mejorar
+2. **Configurar GPU**: Activa CUDA para máxima velocidad
+3. **Haz clic en "Mejorar Calidad"**
+4. **Elegir modo**:
+   - **Completo**: Upscaling 2x + filtros (más lento, mejor calidad)
+   - **Básico**: Solo filtros (más rápido, buena mejora)
+5. **Procesar**: Con GPU es 5-10x más rápido
 
 #### Paso 7: Finalización ✅
 
@@ -203,26 +230,28 @@ python main.py
 ### 🔄 Interfaz de Usuario
 
 ```
-┌───────────────────────────────────────────────────────────┐
-│ Videos a concatenar:                                      │
-│ ┌───────────────────────────────────────────────────────┐ │
-│ │ video1.mp4                                            │ │
-│ │ video2.mp4                                            │ │
-│ │ video3.mp4                                            │ │
-│ └───────────────────────────────────────────────────────┘ │
-│ [Agregar Videos] [Quitar] [Limpiar] [⬆] [⬇]               │
-│                                                           │
-│ Archivo de salida: [_______________] [Seleccionar]        │
-│                                                           │
-│ Configuración:                                            │
-│ Uso máximo CPU (%): [80]                                  │
-│ Ruta FFmpeg: [ffmpeg]                                     │
-│                                                           │
-│ Progreso: [████████████████████████████] CPU: 45%        │
-│                                                           │
-│ [Concatenar Videos] [Extraer Último Frame]                │
-│                     ☑️ También capturar frame al concatenar│
-└───────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│ Videos a concatenar:                                            │
+│ ┌─────────────────────────────────────────────────────────────┐ │
+│ │ video1.mp4                                                  │ │
+│ │ video2.mp4                                                  │ │
+│ │ video3.mp4                                                  │ │
+│ └─────────────────────────────────────────────────────────────┘ │
+│ [Agregar Videos] [Quitar] [Limpiar] [⬆] [⬇]                     │
+│                                                                 │
+│ Archivo de salida: [_______________] [Seleccionar]              │
+│                                                                 │
+│ Configuración:                                                  │
+│ Uso máximo CPU (%): [80]  Ruta FFmpeg: [ffmpeg]                │
+│                                                                 │
+│ Progreso: [████████████████████████████] CPU: 45%              │
+│                                                                 │
+│ [Concatenar Videos] [Extraer Último Frame] [Mejorar Calidad]    │
+│ ☑️ También capturar frame  Calidad frame: [alta ▼]              │
+│                                                                 │
+│ ☑️ Usar aceleración GPU (CUDA)  Estado GPU: Disponible          │
+│ Encoders: h264_nvenc, hevc_nvenc, av1_nvenc                     │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## 🎥 Formatos Soportados

@@ -19,6 +19,7 @@ class VideoConcat:
         self.is_processing = False
         self.ffmpeg_path = os.getenv('FFMPEG_PATH', 'ffmpeg')
         self.max_cpu_usage = float(os.getenv('MAX_CPU_USAGE', '80'))
+        self.cuda_available = self.check_cuda_support()
         
         self.setup_ui()
         
@@ -118,6 +119,24 @@ class VideoConcat:
         quality_combo = ttk.Combobox(options_frame, textvariable=self.quality_var, values=["alta", "media", "baja"], width=8, state="readonly")
         quality_combo.pack(side=tk.LEFT)
         
+        # GPU/CUDA options
+        gpu_frame = ttk.Frame(main_frame)
+        gpu_frame.grid(row=9, column=0, columnspan=3, pady=(0, 10))
+        
+        # CUDA checkbox
+        self.use_cuda_var = tk.BooleanVar(value=self.cuda_available[0])
+        cuda_check = ttk.Checkbutton(gpu_frame, text="Usar aceleración GPU (CUDA)", variable=self.use_cuda_var)
+        cuda_check.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # CUDA status
+        cuda_status = "Disponible" if self.cuda_available[0] else "No disponible"
+        self.cuda_status_label = ttk.Label(gpu_frame, text=f"Estado GPU: {cuda_status}")
+        self.cuda_status_label.pack(side=tk.LEFT)
+        
+        if self.cuda_available[0]:
+            encoders_text = f"Encoders: {', '.join(self.cuda_available[1])}"
+            ttk.Label(gpu_frame, text=encoders_text, font=("Arial", 8)).pack(side=tk.LEFT, padx=(10, 0))
+        
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
@@ -197,6 +216,25 @@ class VideoConcat:
             self.cpu_usage_var.set("CPU: N/A")
         
         self.root.after(2000, self.monitor_cpu)
+    
+    def check_cuda_support(self):
+        """Verificar si CUDA está disponible en FFmpeg"""
+        try:
+            cmd = [self.ffmpeg_path, '-encoders']
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            
+            # Buscar encoders CUDA
+            cuda_encoders = ['h264_nvenc', 'hevc_nvenc', 'av1_nvenc']
+            available_encoders = []
+            
+            for encoder in cuda_encoders:
+                if encoder in result.stdout:
+                    available_encoders.append(encoder)
+            
+            return len(available_encoders) > 0, available_encoders
+            
+        except Exception:
+            return False, []
     
     def capture_last_frame(self, video_path, output_dir):
         """Captura el último frame de un video con configuración de calidad"""
@@ -439,33 +477,67 @@ class VideoConcat:
                 video_name = os.path.splitext(os.path.basename(video_file))[0]
                 enhanced_path = os.path.join(output_dir, f"{video_name}_enhanced.mp4")
                 
+                # Determinar si usar CUDA
+                use_cuda = self.use_cuda_var.get() and self.cuda_available[0]
+                
                 if full_enhancement:
                     # Mejora completa con upscaling y filtros avanzados
-                    cmd = [
-                        self.ffmpeg_path,
-                        '-i', video_file,
-                        '-vf', 'scale=iw*2:ih*2:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,eq=contrast=1.1:brightness=0.05:saturation=1.2',
-                        '-c:v', 'libx264',
-                        '-preset', 'slow',
-                        '-crf', '18',  # Calidad muy alta
-                        '-c:a', 'aac',
-                        '-b:a', '192k',
-                        '-y',
-                        enhanced_path
-                    ]
+                    if use_cuda:
+                        cmd = [
+                            self.ffmpeg_path,
+                            '-hwaccel', 'cuda',  # Aceleración hardware
+                            '-hwaccel_output_format', 'cuda',  # Formato de salida GPU
+                            '-i', video_file,
+                            '-vf', 'scale_cuda=iw*2:ih*2,hwdownload,format=nv12,unsharp=5:5:1.0:5:5:0.0,eq=contrast=1.1:brightness=0.05:saturation=1.2,hwupload_cuda',
+                            '-c:v', 'h264_nvenc',  # Encoder CUDA
+                            '-preset', 'slow',
+                            '-cq', '18',  # Calidad constante para NVENC
+                            '-c:a', 'aac',
+                            '-b:a', '192k',
+                            '-y',
+                            enhanced_path
+                        ]
+                    else:
+                        cmd = [
+                            self.ffmpeg_path,
+                            '-i', video_file,
+                            '-vf', 'scale=iw*2:ih*2:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,eq=contrast=1.1:brightness=0.05:saturation=1.2',
+                            '-c:v', 'libx264',
+                            '-preset', 'slow',
+                            '-crf', '18',  # Calidad muy alta
+                            '-c:a', 'aac',
+                            '-b:a', '192k',
+                            '-y',
+                            enhanced_path
+                        ]
                 else:
                     # Mejora básica solo con filtros
-                    cmd = [
-                        self.ffmpeg_path,
-                        '-i', video_file,
-                        '-vf', 'unsharp=5:5:1.0:5:5:0.0,eq=contrast=1.05:brightness=0.02:saturation=1.1',
-                        '-c:v', 'libx264',
-                        '-preset', 'medium',
-                        '-crf', '20',  # Buena calidad
-                        '-c:a', 'copy',  # Mantener audio original
-                        '-y',
-                        enhanced_path
-                    ]
+                    if use_cuda:
+                        cmd = [
+                            self.ffmpeg_path,
+                            '-hwaccel', 'cuda',
+                            '-hwaccel_output_format', 'cuda',
+                            '-i', video_file,
+                            '-vf', 'hwdownload,format=nv12,unsharp=5:5:1.0:5:5:0.0,eq=contrast=1.05:brightness=0.02:saturation=1.1,hwupload_cuda',
+                            '-c:v', 'h264_nvenc',
+                            '-preset', 'medium',
+                            '-cq', '20',  # Buena calidad
+                            '-c:a', 'copy',  # Mantener audio original
+                            '-y',
+                            enhanced_path
+                        ]
+                    else:
+                        cmd = [
+                            self.ffmpeg_path,
+                            '-i', video_file,
+                            '-vf', 'unsharp=5:5:1.0:5:5:0.0,eq=contrast=1.05:brightness=0.02:saturation=1.1',
+                            '-c:v', 'libx264',
+                            '-preset', 'medium',
+                            '-crf', '20',  # Buena calidad
+                            '-c:a', 'copy',  # Mantener audio original
+                            '-y',
+                            enhanced_path
+                        ]
                 
                 try:
                     # Ejecutar con control de CPU
