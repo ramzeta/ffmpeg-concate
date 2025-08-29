@@ -72,3 +72,9 @@ frames/
 *.3gp
 *.3g2
 *.mj2
+
+# Enhanced videos
+*_enhanced.mp4
+*_enhanced.avi
+*_enhanced.mov
+enhanced/

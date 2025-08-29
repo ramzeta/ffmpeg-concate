@@ -100,10 +100,23 @@ class VideoConcat:
         self.frame_button = ttk.Button(process_frame, text="Extraer Último Frame", command=self.start_frame_extraction)
         self.frame_button.pack(side=tk.LEFT, padx=(0, 10))
         
+        self.enhance_button = ttk.Button(process_frame, text="Mejorar Calidad", command=self.start_quality_enhancement)
+        self.enhance_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Frame options
+        options_frame = ttk.Frame(main_frame)
+        options_frame.grid(row=8, column=0, columnspan=3, pady=(0, 10))
+        
         # Checkbox for frame capture during concatenation
         self.capture_frame_var = tk.BooleanVar(value=True)
-        capture_check = ttk.Checkbutton(process_frame, text="También capturar frame al concatenar", variable=self.capture_frame_var)
-        capture_check.pack(side=tk.LEFT)
+        capture_check = ttk.Checkbutton(options_frame, text="También capturar frame al concatenar", variable=self.capture_frame_var)
+        capture_check.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Quality selector
+        ttk.Label(options_frame, text="Calidad frame:").pack(side=tk.LEFT, padx=(10, 5))
+        self.quality_var = tk.StringVar(value="alta")
+        quality_combo = ttk.Combobox(options_frame, textvariable=self.quality_var, values=["alta", "media", "baja"], width=8, state="readonly")
+        quality_combo.pack(side=tk.LEFT)
         
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
@@ -186,39 +199,45 @@ class VideoConcat:
         self.root.after(2000, self.monitor_cpu)
     
     def capture_last_frame(self, video_path, output_dir):
-        """Captura el último frame de un video"""
+        """Captura el último frame de un video con configuración de calidad"""
         try:
             video_name = os.path.splitext(os.path.basename(video_path))[0]
             frame_path = os.path.join(output_dir, f"{video_name}_last_frame.png")
             
-            # Comando FFmpeg para capturar el último frame
-            cmd = [
-                self.ffmpeg_path,
-                '-i', video_path,
-                '-vf', 'select=eq(n\\,0)',
-                '-vframes', '1',
-                '-f', 'image2',
-                '-y',  # Sobrescribir si existe
-                frame_path
-            ]
+            # Configuraciones de calidad
+            quality_settings = {
+                "alta": {
+                    "q:v": "1",  # Máxima calidad
+                    "compression_level": "0",  # Sin compresión
+                    "pix_fmt": "rgb24"  # RGB 24-bit
+                },
+                "media": {
+                    "q:v": "5",  # Calidad media
+                    "compression_level": "6",  # Compresión media
+                    "pix_fmt": "rgb24"
+                },
+                "baja": {
+                    "q:v": "15",  # Calidad baja
+                    "compression_level": "9",  # Máxima compresión
+                    "pix_fmt": "yuv420p"  # Formato más comprimido
+                }
+            }
             
-            # Para obtener el último frame, primero obtenemos la duración
-            duration_cmd = [
-                self.ffmpeg_path,
-                '-i', video_path,
-                '-f', 'null',
-                '-'
-            ]
+            # Obtener configuración actual
+            quality = self.quality_var.get() if hasattr(self, 'quality_var') else "alta"
+            settings = quality_settings.get(quality, quality_settings["alta"])
             
-            # Ejecutar comando para obtener duración
-            result = subprocess.run(duration_cmd, capture_output=True, text=True)
-            
-            # Extraer último frame usando seek to end-1 segundo
+            # Extraer último frame con configuración de calidad
             cmd_last = [
                 self.ffmpeg_path,
                 '-sseof', '-1',  # Seek to 1 second before end
                 '-i', video_path,
                 '-vframes', '1',
+                '-q:v', settings["q:v"],
+                '-compression_level', settings["compression_level"],
+                '-pix_fmt', settings["pix_fmt"],
+                '-vf', 'scale=iw:ih',  # Mantener resolución original
+                '-f', 'png',
                 '-y',
                 frame_path
             ]
@@ -361,6 +380,157 @@ class VideoConcat:
             self.is_processing = False
             self.concat_button.config(state="normal")
             self.frame_button.config(state="normal")
+            self.enhance_button.config(state="normal")
+            self.progress_bar.stop()
+    
+    def start_quality_enhancement(self):
+        """Iniciar mejora de calidad de videos seleccionados"""
+        if self.is_processing:
+            messagebox.showwarning("Advertencia", "Ya se está procesando")
+            return
+        
+        if not self.video_files:
+            messagebox.showerror("Error", "No hay videos seleccionados")
+            return
+        
+        # Preguntar dónde guardar los videos mejorados
+        output_dir = filedialog.askdirectory(title="Seleccionar carpeta para guardar videos mejorados")
+        if not output_dir:
+            return
+        
+        # Mostrar opciones de mejora
+        options = messagebox.askyesnocancel(
+            "Opciones de Mejora",
+            "¿Qué tipo de mejora deseas?\n\n"
+            "SÍ: Mejora completa (upscaling 2x + filtros avanzados)\n"
+            "NO: Mejora básica (solo filtros de nitidez y color)\n"
+            "CANCELAR: Cancelar operación"
+        )
+        
+        if options is None:  # Cancelar
+            return
+        
+        self.is_processing = True
+        self.concat_button.config(state="disabled")
+        self.frame_button.config(state="disabled")
+        self.enhance_button.config(state="disabled")
+        self.progress_bar.start()
+        self.progress_var.set("Mejorando calidad de videos...")
+        
+        thread = threading.Thread(target=self.enhance_videos_quality, args=(output_dir, options))
+        thread.daemon = True
+        thread.start()
+    
+    def enhance_videos_quality(self, output_dir, full_enhancement):
+        """Mejorar calidad de videos seleccionados"""
+        try:
+            enhanced_videos = []
+            failed_enhancements = []
+            total_videos = len(self.video_files)
+            
+            for i, video_file in enumerate(self.video_files):
+                self.progress_var.set(f"Mejorando video {i+1}/{total_videos}...")
+                
+                # Verificar que el archivo existe
+                if not os.path.exists(video_file):
+                    failed_enhancements.append(f"{os.path.basename(video_file)} - Archivo no encontrado")
+                    continue
+                
+                video_name = os.path.splitext(os.path.basename(video_file))[0]
+                enhanced_path = os.path.join(output_dir, f"{video_name}_enhanced.mp4")
+                
+                if full_enhancement:
+                    # Mejora completa con upscaling y filtros avanzados
+                    cmd = [
+                        self.ffmpeg_path,
+                        '-i', video_file,
+                        '-vf', 'scale=iw*2:ih*2:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,eq=contrast=1.1:brightness=0.05:saturation=1.2',
+                        '-c:v', 'libx264',
+                        '-preset', 'slow',
+                        '-crf', '18',  # Calidad muy alta
+                        '-c:a', 'aac',
+                        '-b:a', '192k',
+                        '-y',
+                        enhanced_path
+                    ]
+                else:
+                    # Mejora básica solo con filtros
+                    cmd = [
+                        self.ffmpeg_path,
+                        '-i', video_file,
+                        '-vf', 'unsharp=5:5:1.0:5:5:0.0,eq=contrast=1.05:brightness=0.02:saturation=1.1',
+                        '-c:v', 'libx264',
+                        '-preset', 'medium',
+                        '-crf', '20',  # Buena calidad
+                        '-c:a', 'copy',  # Mantener audio original
+                        '-y',
+                        enhanced_path
+                    ]
+                
+                try:
+                    # Ejecutar con control de CPU
+                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    ps_process = psutil.Process(process.pid)
+                    
+                    while process.poll() is None:
+                        current_cpu = psutil.cpu_percent(interval=0.1)
+                        if current_cpu > self.max_cpu_usage:
+                            try:
+                                ps_process.suspend()
+                                time.sleep(0.5)
+                                ps_process.resume()
+                            except:
+                                pass
+                        time.sleep(0.1)
+                    
+                    stdout, stderr = process.communicate()
+                    
+                    if process.returncode == 0 and os.path.exists(enhanced_path):
+                        enhanced_videos.append(enhanced_path)
+                    else:
+                        failed_enhancements.append(f"{os.path.basename(video_file)} - Error en mejora")
+                        
+                except Exception as e:
+                    failed_enhancements.append(f"{os.path.basename(video_file)} - {str(e)}")
+            
+            # Mostrar resultados
+            if enhanced_videos:
+                success_msg = f"Videos mejorados exitosamente: {len(enhanced_videos)}\n\n"
+                success_msg += "Archivos generados:\n"
+                for video in enhanced_videos[:3]:  # Mostrar máximo 3
+                    success_msg += f"• {os.path.basename(video)}\n"
+                if len(enhanced_videos) > 3:
+                    success_msg += f"... y {len(enhanced_videos) - 3} más"
+                    
+                if failed_enhancements:
+                    success_msg += f"\n\nAdvertencias ({len(failed_enhancements)} fallos):\n"
+                    for failure in failed_enhancements[:2]:
+                        success_msg += f"• {failure}\n"
+                    if len(failed_enhancements) > 2:
+                        success_msg += f"... y {len(failed_enhancements) - 2} más"
+                
+                self.progress_var.set("Mejora de calidad completada")
+                messagebox.showinfo("Éxito", success_msg)
+            else:
+                self.progress_var.set("Error en la mejora")
+                error_msg = "No se pudo mejorar ningún video.\n\nErrores:\n"
+                for failure in failed_enhancements[:3]:
+                    error_msg += f"• {failure}\n"
+                messagebox.showerror("Error", error_msg)
+                
+        except Exception as e:
+            self.progress_var.set("Error inesperado")
+            import traceback
+            error_details = traceback.format_exc()
+            with open('app_error.log', 'w') as f:
+                f.write(error_details)
+            messagebox.showerror("Error", f"Error inesperado: {str(e)}\n\nRevisa app_error.log para más detalles")
+        
+        finally:
+            self.is_processing = False
+            self.concat_button.config(state="normal")
+            self.frame_button.config(state="normal")
+            self.enhance_button.config(state="normal")
             self.progress_bar.stop()
     
     def process_videos(self):
@@ -402,7 +572,9 @@ class VideoConcat:
                 '-f', 'concat',
                 '-safe', '0',
                 '-i', temp_file,
-                '-c', 'copy',
+                '-c', 'copy',  # Copia directa sin recodificación
+                '-avoid_negative_ts', 'make_zero',  # Evitar problemas de timestamp
+                '-fflags', '+genpts',  # Generar timestamps si es necesario
                 '-y',
                 output_path
             ]
@@ -480,6 +652,7 @@ class VideoConcat:
             self.is_processing = False
             self.concat_button.config(state="normal")
             self.frame_button.config(state="normal")
+            self.enhance_button.config(state="normal")
             self.progress_bar.stop()
             # Limpiar archivo temporal si existe
             if 'temp_file' in locals() and os.path.exists(temp_file):

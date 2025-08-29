@@ -16,8 +16,9 @@ Una aplicación de escritorio con interfaz gráfica desarrollada en Python que p
 - 📁 **Validación automática** de archivos y extensiones
 - 🛡️ **Manejo robusto de errores** con logging detallado
 - 🧹 **Limpieza automática** de archivos temporales
-- 📸 **Extracción de último frame** independiente o durante concatenación
+- 📸 **Extracción de último frame** con control de calidad (alta/media/baja)
 - 🎯 **Modo dual**: Concatenar videos O extraer frames por separado
+- 🖼️ **Frames de alta calidad** con configuraciones optimizadas de FFmpeg
 
 ## 📋 Requisitos del Sistema
 
