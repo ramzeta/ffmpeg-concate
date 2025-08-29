@@ -12,11 +12,16 @@ class VideoConcat:
     def __init__(self, root):
         self.root = root
         self.root.title("Video Concatenator")
-        self.root.geometry("800x600")
+        self.root.geometry("900x750")
+        self.root.minsize(800, 600)  # Tamaño mínimo
+        self.root.resizable(True, True)  # Permitir redimensionar
         
         self.video_files = []
         self.output_path = ""
         self.is_processing = False
+        self.current_process = None
+        self.current_thread = None
+        self.stop_requested = False
         self.ffmpeg_path = os.getenv('FFMPEG_PATH', 'ffmpeg')
         self.max_cpu_usage = float(os.getenv('MAX_CPU_USAGE', '80'))
         self.cuda_available = self.check_cuda_support()
@@ -32,8 +37,8 @@ class VideoConcat:
         ttk.Label(main_frame, text="Videos a concatenar:", font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
         
         # Listbox for videos
-        self.video_listbox = tk.Listbox(main_frame, height=10, width=80)
-        self.video_listbox.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
+        self.video_listbox = tk.Listbox(main_frame, height=12, width=80)
+        self.video_listbox.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 15))
         
         # Scrollbar for listbox
         scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=self.video_listbox.yview)
@@ -42,7 +47,7 @@ class VideoConcat:
         
         # Buttons frame
         buttons_frame = ttk.Frame(main_frame)
-        buttons_frame.grid(row=2, column=0, columnspan=3, pady=(0, 10))
+        buttons_frame.grid(row=2, column=0, columnspan=3, pady=(0, 15))
         
         ttk.Button(buttons_frame, text="Agregar Videos", command=self.add_videos).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(buttons_frame, text="Quitar Seleccionado", command=self.remove_video).pack(side=tk.LEFT, padx=5)
@@ -51,10 +56,10 @@ class VideoConcat:
         ttk.Button(buttons_frame, text="Bajar", command=self.move_down).pack(side=tk.LEFT, padx=5)
         
         # Output section
-        ttk.Label(main_frame, text="Archivo de salida:", font=("Arial", 12, "bold")).grid(row=3, column=0, sticky=tk.W, pady=(10, 5))
+        ttk.Label(main_frame, text="Archivo de salida:", font=("Arial", 12, "bold")).grid(row=3, column=0, sticky=tk.W, pady=(15, 5))
         
         output_frame = ttk.Frame(main_frame)
-        output_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
+        output_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 15))
         
         self.output_var = tk.StringVar()
         self.output_entry = ttk.Entry(output_frame, textvariable=self.output_var, width=60)
@@ -64,7 +69,7 @@ class VideoConcat:
         
         # Settings section
         settings_frame = ttk.LabelFrame(main_frame, text="Configuración", padding="10")
-        settings_frame.grid(row=5, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
+        settings_frame.grid(row=5, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 15))
         
         ttk.Label(settings_frame, text="Uso máximo de CPU (%):").grid(row=0, column=0, sticky=tk.W)
         self.cpu_var = tk.StringVar(value=str(self.max_cpu_usage))
@@ -78,7 +83,7 @@ class VideoConcat:
         
         # Progress section
         progress_frame = ttk.LabelFrame(main_frame, text="Progreso", padding="10")
-        progress_frame.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
+        progress_frame.grid(row=6, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 15))
         
         self.progress_var = tk.StringVar(value="Listo")
         ttk.Label(progress_frame, textvariable=self.progress_var).pack()
@@ -92,7 +97,7 @@ class VideoConcat:
         
         # Process buttons frame
         process_frame = ttk.Frame(main_frame)
-        process_frame.grid(row=7, column=0, columnspan=3, pady=10)
+        process_frame.grid(row=7, column=0, columnspan=3, pady=15)
         
         # Main action buttons
         self.concat_button = ttk.Button(process_frame, text="Concatenar Videos", command=self.start_concatenation)
@@ -104,9 +109,12 @@ class VideoConcat:
         self.enhance_button = ttk.Button(process_frame, text="Mejorar Calidad", command=self.start_quality_enhancement)
         self.enhance_button.pack(side=tk.LEFT, padx=(0, 10))
         
+        self.stop_button = ttk.Button(process_frame, text="🛑 Detener", command=self.stop_processing, state="disabled")
+        self.stop_button.pack(side=tk.LEFT, padx=(0, 10))
+        
         # Frame options
         options_frame = ttk.Frame(main_frame)
-        options_frame.grid(row=8, column=0, columnspan=3, pady=(0, 10))
+        options_frame.grid(row=8, column=0, columnspan=3, pady=(0, 15))
         
         # Checkbox for frame capture during concatenation
         self.capture_frame_var = tk.BooleanVar(value=True)
@@ -121,21 +129,30 @@ class VideoConcat:
         
         # GPU/CUDA options
         gpu_frame = ttk.Frame(main_frame)
-        gpu_frame.grid(row=9, column=0, columnspan=3, pady=(0, 10))
+        gpu_frame.grid(row=9, column=0, columnspan=3, pady=(0, 15))
         
         # CUDA checkbox
         self.use_cuda_var = tk.BooleanVar(value=self.cuda_available[0])
         cuda_check = ttk.Checkbutton(gpu_frame, text="Usar aceleración GPU (CUDA)", variable=self.use_cuda_var)
         cuda_check.pack(side=tk.LEFT, padx=(0, 10))
         
+        # Modo de concatenación
+        ttk.Label(gpu_frame, text="Modo:").pack(side=tk.LEFT, padx=(10, 5))
+        self.concat_mode_var = tk.StringVar(value="rapido" if not self.cuda_available[0] else "gpu")
+        mode_values = ["rapido", "gpu", "calidad", "turbo"] if self.cuda_available[0] else ["rapido", "calidad", "turbo"]
+        mode_combo = ttk.Combobox(gpu_frame, textvariable=self.concat_mode_var, values=mode_values, width=8, state="readonly")
+        mode_combo.pack(side=tk.LEFT, padx=(0, 10))
+        
         # CUDA status
         cuda_status = "Disponible" if self.cuda_available[0] else "No disponible"
-        self.cuda_status_label = ttk.Label(gpu_frame, text=f"Estado GPU: {cuda_status}")
+        self.cuda_status_label = ttk.Label(gpu_frame, text=f"GPU: {cuda_status}")
         self.cuda_status_label.pack(side=tk.LEFT)
         
-        if self.cuda_available[0]:
-            encoders_text = f"Encoders: {', '.join(self.cuda_available[1])}"
-            ttk.Label(gpu_frame, text=encoders_text, font=("Arial", 8)).pack(side=tk.LEFT, padx=(10, 0))
+        # Tooltip info
+        info_frame = ttk.Frame(main_frame)
+        info_frame.grid(row=10, column=0, columnspan=3, pady=(0, 5))
+        info_text = "Modos: rápido=sin pérdida, gpu=CUDA optimizado, calidad=máxima compatibilidad, turbo=90% recursos"
+        ttk.Label(info_frame, text=info_text, font=("Arial", 8), foreground="gray").pack()
         
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
@@ -216,6 +233,63 @@ class VideoConcat:
             self.cpu_usage_var.set("CPU: N/A")
         
         self.root.after(2000, self.monitor_cpu)
+    
+    def stop_processing(self):
+        """Detener el proceso actual en ejecución"""
+        if not self.is_processing:
+            return
+        
+        # Marcar que se solicitó detener
+        self.stop_requested = True
+        
+        # Intentar terminar el proceso FFmpeg
+        if self.current_process:
+            try:
+                # Terminar proceso y subprocesos
+                import psutil
+                parent = psutil.Process(self.current_process.pid)
+                for child in parent.children(recursive=True):
+                    try:
+                        child.terminate()
+                    except:
+                        pass
+                parent.terminate()
+                
+                # Esperar un poco para terminación limpia
+                try:
+                    parent.wait(timeout=3)
+                except:
+                    # Si no termina, forzar
+                    try:
+                        parent.kill()
+                        for child in parent.children(recursive=True):
+                            child.kill()
+                    except:
+                        pass
+            except Exception as e:
+                print(f"Error terminando proceso: {e}")
+        
+        # Actualizar interfaz
+        self.progress_var.set("Proceso detenido por el usuario")
+        self.progress_bar.stop()
+        
+        # Restaurar botones
+        self.reset_ui_state()
+        
+        messagebox.showwarning("Proceso Detenido", "El procesamiento ha sido cancelado por el usuario.")
+    
+    def reset_ui_state(self):
+        """Restaurar estado de la interfaz"""
+        self.is_processing = False
+        self.current_process = None
+        self.current_thread = None
+        self.stop_requested = False
+        
+        # Habilitar botones
+        self.concat_button.config(state="normal")
+        self.frame_button.config(state="normal") 
+        self.enhance_button.config(state="normal")
+        self.stop_button.config(state="disabled")
     
     def check_cuda_support(self):
         """Verificar si CUDA está disponible en FFmpeg"""
@@ -325,13 +399,17 @@ class VideoConcat:
         self.ffmpeg_path = self.ffmpeg_var.get()
         
         self.is_processing = True
+        self.stop_requested = False
         self.concat_button.config(state="disabled")
         self.frame_button.config(state="disabled")
+        self.enhance_button.config(state="disabled")
+        self.stop_button.config(state="normal")
         self.progress_bar.start()
         self.progress_var.set("Iniciando concatenación...")
         
         thread = threading.Thread(target=self.process_videos)
         thread.daemon = True
+        self.current_thread = thread
         thread.start()
     
     def start_frame_extraction(self):
@@ -350,13 +428,17 @@ class VideoConcat:
             return
         
         self.is_processing = True
+        self.stop_requested = False
         self.concat_button.config(state="disabled")
         self.frame_button.config(state="disabled")
+        self.enhance_button.config(state="disabled")
+        self.stop_button.config(state="normal")
         self.progress_bar.start()
         self.progress_var.set("Extrayendo últimos frames...")
         
         thread = threading.Thread(target=self.extract_frames_only, args=(output_dir,))
         thread.daemon = True
+        self.current_thread = thread
         thread.start()
     
     def extract_frames_only(self, output_dir):
@@ -367,6 +449,11 @@ class VideoConcat:
             total_videos = len(self.video_files)
             
             for i, video_file in enumerate(self.video_files):
+                # Verificar si se solicitó cancelación
+                if self.stop_requested:
+                    self.progress_var.set("Extracción cancelada por el usuario")
+                    return
+                
                 self.progress_var.set(f"Extrayendo frame {i+1}/{total_videos}...")
                 
                 # Verificar que el archivo existe
@@ -415,11 +502,7 @@ class VideoConcat:
             messagebox.showerror("Error", f"Error inesperado: {str(e)}\n\nRevisa app_error.log para más detalles")
         
         finally:
-            self.is_processing = False
-            self.concat_button.config(state="normal")
-            self.frame_button.config(state="normal")
-            self.enhance_button.config(state="normal")
-            self.progress_bar.stop()
+            self.reset_ui_state()
     
     def start_quality_enhancement(self):
         """Iniciar mejora de calidad de videos seleccionados"""
@@ -449,14 +532,17 @@ class VideoConcat:
             return
         
         self.is_processing = True
+        self.stop_requested = False
         self.concat_button.config(state="disabled")
         self.frame_button.config(state="disabled")
         self.enhance_button.config(state="disabled")
+        self.stop_button.config(state="normal")
         self.progress_bar.start()
         self.progress_var.set("Mejorando calidad de videos...")
         
         thread = threading.Thread(target=self.enhance_videos_quality, args=(output_dir, options))
         thread.daemon = True
+        self.current_thread = thread
         thread.start()
     
     def enhance_videos_quality(self, output_dir, full_enhancement):
@@ -467,6 +553,11 @@ class VideoConcat:
             total_videos = len(self.video_files)
             
             for i, video_file in enumerate(self.video_files):
+                # Verificar si se solicitó cancelación
+                if self.stop_requested:
+                    self.progress_var.set("Mejora cancelada por el usuario")
+                    return
+                
                 self.progress_var.set(f"Mejorando video {i+1}/{total_videos}...")
                 
                 # Verificar que el archivo existe
@@ -544,7 +635,7 @@ class VideoConcat:
                     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                     ps_process = psutil.Process(process.pid)
                     
-                    while process.poll() is None:
+                    while process.poll() is None and not self.stop_requested:
                         current_cpu = psutil.cpu_percent(interval=0.1)
                         if current_cpu > self.max_cpu_usage:
                             try:
@@ -599,11 +690,7 @@ class VideoConcat:
             messagebox.showerror("Error", f"Error inesperado: {str(e)}\n\nRevisa app_error.log para más detalles")
         
         finally:
-            self.is_processing = False
-            self.concat_button.config(state="normal")
-            self.frame_button.config(state="normal")
-            self.enhance_button.config(state="normal")
-            self.progress_bar.stop()
+            self.reset_ui_state()
     
     def process_videos(self):
         try:
@@ -614,6 +701,11 @@ class VideoConcat:
             except FileNotFoundError:
                 self.progress_var.set("FFmpeg no encontrado")
                 messagebox.showerror("Error", f"FFmpeg no encontrado en: {self.ffmpeg_path}\n\nPor favor, instala FFmpeg o configura la ruta correcta.")
+                return
+            
+            # Verificar cancelación antes de empezar
+            if self.stop_requested:
+                self.progress_var.set("Concatenación cancelada")
                 return
             
             # Verificar que todos los archivos existen
@@ -639,17 +731,105 @@ class VideoConcat:
             
             output_path = self.output_var.get().strip()
             
-            cmd = [
-                self.ffmpeg_path,
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', temp_file,
-                '-c', 'copy',  # Copia directa sin recodificación
-                '-avoid_negative_ts', 'make_zero',  # Evitar problemas de timestamp
-                '-fflags', '+genpts',  # Generar timestamps si es necesario
-                '-y',
-                output_path
-            ]
+            # Determinar modo de concatenación
+            concat_mode = self.concat_mode_var.get()
+            use_cuda = self.use_cuda_var.get() and self.cuda_available[0]
+            
+            if concat_mode == "gpu" and use_cuda:
+                # Modo GPU: recodifica con CUDA para máxima velocidad
+                cmd = [
+                    self.ffmpeg_path,
+                    '-hwaccel', 'cuda',
+                    '-hwaccel_output_format', 'cuda',
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', temp_file,
+                    '-c:v', 'h264_nvenc',  # Encoder GPU
+                    '-preset', 'p1',  # Máxima velocidad NVENC
+                    '-tune', 'hq',  # Optimizar para calidad
+                    '-cq', '20',  # Calidad visual excelente
+                    '-b:v', '0',  # Rate control por CQ
+                    '-c:a', 'copy',  # Audio sin cambios
+                    '-avoid_negative_ts', 'make_zero',
+                    '-fflags', '+genpts',
+                    '-threads', '0',
+                    '-y',
+                    output_path
+                ]
+            elif concat_mode == "calidad":
+                # Modo calidad: recodifica con CPU para máxima compatibilidad
+                cmd = [
+                    self.ffmpeg_path,
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', temp_file,
+                    '-c:v', 'libx264',  # Encoder CPU de alta calidad
+                    '-preset', 'medium',
+                    '-crf', '18',  # Calidad muy alta
+                    '-c:a', 'aac',  # Recodificar audio para compatibilidad
+                    '-b:a', '192k',
+                    '-avoid_negative_ts', 'make_zero',
+                    '-fflags', '+genpts',
+                    '-threads', '0',  # Usar todos los cores
+                    '-y',
+                    output_path
+                ]
+            elif concat_mode == "turbo":
+                # Modo TURBO: 100% de recursos, sin verificaciones
+                if use_cuda:
+                    cmd = [
+                        self.ffmpeg_path,
+                        '-hwaccel', 'cuda',
+                        '-hwaccel_output_format', 'cuda',
+                        '-f', 'concat',
+                        '-safe', '0',
+                        '-i', temp_file,
+                        '-c:v', 'h264_nvenc',
+                        '-preset', 'p1',  # Máxima velocidad
+                        '-tune', 'ull',  # Ultra low latency
+                        '-cq', '18',  # Calidad alta
+                        '-2pass', '0',  # Sin 2-pass
+                        '-b_ref_mode', '0',  # Sin frames de referencia extra
+                        '-spatial_aq', '1',  # AQ espacial activado
+                        '-temporal_aq', '1',  # AQ temporal activado
+                        '-c:a', 'copy',
+                        '-threads', '0',
+                        '-thread_queue_size', '1024',  # Buffer grande
+                        '-max_muxing_queue_size', '9999',
+                        '-y',
+                        output_path
+                    ]
+                else:
+                    cmd = [
+                        self.ffmpeg_path,
+                        '-f', 'concat',
+                        '-safe', '0',
+                        '-i', temp_file,
+                        '-c', 'copy',
+                        '-threads', '0',
+                        '-thread_queue_size', '1024',  # Buffer grande
+                        '-max_muxing_queue_size', '9999',
+                        '-max_interleave_delta', '0',  # Sin límite de entrelazado
+                        '-avoid_negative_ts', 'disabled',  # Desactivar verificaciones
+                        '-fflags', '+genpts+igndts+ignidx',  # Ignorar índices y timestamps
+                        '-y',
+                        output_path
+                    ]
+            else:  # modo "rapido" por defecto
+                # Modo rápido: sin pérdida, máxima velocidad
+                cmd = [
+                    self.ffmpeg_path,
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', temp_file,
+                    '-c', 'copy',  # Sin recodificación
+                    '-avoid_negative_ts', 'make_zero',
+                    '-fflags', '+genpts',
+                    '-threads', '0',
+                    '-max_muxing_queue_size', '9999',
+                    '-y',
+                    output_path
+                ]
             
             # Usar subprocess.STARTUPINFO para Windows
             startupinfo = None
@@ -666,19 +846,76 @@ class VideoConcat:
                 startupinfo=startupinfo
             )
             
-            # Convertir a proceso psutil para control de CPU
+            # Almacenar referencia del proceso para poder detenerlo
+            self.current_process = process
+            
+            # Verificar cancelación después de iniciar proceso
+            if self.stop_requested:
+                try:
+                    process.terminate()
+                except:
+                    pass
+                return
+            
+            # Control de proceso optimizado
             ps_process = psutil.Process(process.pid)
             
-            while process.poll() is None:
-                current_cpu = psutil.cpu_percent(interval=0.1)
-                if current_cpu > self.max_cpu_usage:
-                    try:
-                        ps_process.suspend()
-                        time.sleep(0.5)
-                        ps_process.resume()
-                    except:
-                        pass  # Ignorar errores de suspensión
-                time.sleep(0.1)
+            # Configurar prioridad y control según el modo
+            try:
+                if concat_mode == "turbo":
+                    # TURBO: máxima prioridad, sin limitaciones
+                    ps_process.nice(psutil.REALTIME_PRIORITY_CLASS if os.name == 'nt' else -20)
+                elif concat_mode == "gpu" and use_cuda:
+                    # GPU: prioridad alta para aprovechar al máximo
+                    ps_process.nice(psutil.HIGH_PRIORITY_CLASS if os.name == 'nt' else -10)
+                elif concat_mode == "calidad":
+                    # CPU intensivo: prioridad normal con control estricto
+                    ps_process.nice(psutil.NORMAL_PRIORITY_CLASS if os.name == 'nt' else 0)
+                else:
+                    # Modo rápido: prioridad alta, menos control
+                    ps_process.nice(psutil.HIGH_PRIORITY_CLASS if os.name == 'nt' else -5)
+            except:
+                pass
+            
+            # Control de CPU adaptativo según el modo
+            if concat_mode == "turbo":
+                # MODO TURBO: usar hasta 90% de CPU/GPU
+                while process.poll() is None and not self.stop_requested:
+                    current_cpu = psutil.cpu_percent(interval=0.01)
+                    if current_cpu > 90:  # Límite del 90%
+                        time.sleep(0.01)  # Pausa muy corta
+                    else:
+                        time.sleep(0.001)  # Mínimo sleep
+            else:
+                # Modos normales con control de CPU
+                cpu_checks = 0
+                check_interval = 10 if concat_mode == "rapido" else 3
+                
+                while process.poll() is None and not self.stop_requested:
+                    if cpu_checks % check_interval == 0:
+                        current_cpu = psutil.cpu_percent(interval=0.1)
+                        
+                        # Umbral dinámico según el modo
+                        if concat_mode == "gpu" and use_cuda:
+                            # Con GPU, permitir más CPU para transferencias
+                            cpu_limit = min(self.max_cpu_usage + 10, 95)
+                        elif concat_mode == "rapido":
+                            # Modo rápido: ser más permisivo
+                            cpu_limit = min(self.max_cpu_usage + 5, 90)
+                        else:
+                            cpu_limit = self.max_cpu_usage
+                        
+                        if current_cpu > cpu_limit:
+                            try:
+                                ps_process.suspend()
+                                time.sleep(0.1 if concat_mode == "rapido" else 0.3)
+                                ps_process.resume()
+                            except:
+                                pass
+                    else:
+                        time.sleep(0.02 if concat_mode == "gpu" else 0.05)
+                    
+                    cpu_checks += 1
             
             stdout, stderr = process.communicate()
             
@@ -721,11 +958,7 @@ class VideoConcat:
             messagebox.showerror("Error", f"Error inesperado: {str(e)}\n\nRevisa app_error.log para más detalles")
         
         finally:
-            self.is_processing = False
-            self.concat_button.config(state="normal")
-            self.frame_button.config(state="normal")
-            self.enhance_button.config(state="normal")
-            self.progress_bar.stop()
+            self.reset_ui_state()
             # Limpiar archivo temporal si existe
             if 'temp_file' in locals() and os.path.exists(temp_file):
                 try:
