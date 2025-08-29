@@ -16,6 +16,7 @@ Una aplicación de escritorio con interfaz gráfica desarrollada en Python que p
 - 📁 **Validación automática** de archivos y extensiones
 - 🛡️ **Manejo robusto de errores** con logging detallado
 - 🧹 **Limpieza automática** de archivos temporales
+- 📸 **Captura de último frame** automática del video concatenado
 
 ## 📋 Requisitos del Sistema
 
@@ -141,21 +142,29 @@ python main.py
    - **Laptop**: 60-70%
 2. **Verificar ruta FFmpeg**: Normalmente no necesitas cambiar esto
 
-#### Paso 6: Procesar Videos ▶️
+#### Paso 6: Configurar Opciones Adicionales 📸
+- **Capturar último frame**: Mantén activada esta opción si quieres que se genere automáticamente una imagen PNG del último frame del video concatenado
+- Esta imagen se guardará en el mismo directorio que el video final con el nombre `[nombre_video]_last_frame.png`
+
+#### Paso 7: Procesar Videos ▶️
 1. **Verificar configuración**:
    - ✅ Videos en la lista en orden correcto
    - ✅ Archivo de salida configurado
    - ✅ Configuración de CPU ajustada
+   - ✅ Opción de captura de frame según preferencia
 2. **Iniciar proceso**: Haz clic en **"Concatenar Videos"**
 3. **Monitorear progreso**:
    - Observa la barra de progreso
    - Revisa el uso de CPU en tiempo real
    - La aplicación pausará FFmpeg si el CPU supera el límite
 
-#### Paso 7: Finalización ✅
+#### Paso 8: Finalización ✅
 - **Éxito**: Aparecerá mensaje "Videos concatenados exitosamente"
+  - Si activaste la captura de frame, también se mostrará la ruta del archivo PNG generado
 - **Error**: Revisa los archivos de log (`ffmpeg_error.log`, `app_error.log`)
-- El archivo final estará en la ubicación que especificaste
+- **Archivos generados**:
+  - Video concatenado: En la ubicación que especificaste
+  - Último frame: `[nombre_video]_last_frame.png` (si está activado)
 
 ### 🎯 Consejos para Mejores Resultados
 
@@ -197,7 +206,7 @@ python main.py
 │                                                 │
 │ Progreso: [████████████████████████████] CPU: 45% │
 │                                                 │
-│              [Concatenar Videos]                │
+│ [Concatenar Videos] ☑️ Capturar último frame    │
 └─────────────────────────────────────────────────┘
 ```
 

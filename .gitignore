@@ -55,3 +55,20 @@ Thumbs.db
 venv/
 *.exe
 *.bat
+
+# Generated frames
+*_last_frame.png
+frames/
+
+# Video files
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
+*.3gp
+*.3g2
+*.mj2

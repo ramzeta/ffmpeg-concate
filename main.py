@@ -89,9 +89,17 @@ class VideoConcat:
         self.cpu_usage_var = tk.StringVar(value="CPU: 0%")
         ttk.Label(progress_frame, textvariable=self.cpu_usage_var).pack(pady=(5, 0))
         
-        # Process button
-        self.process_button = ttk.Button(main_frame, text="Concatenar Videos", command=self.start_processing)
-        self.process_button.grid(row=7, column=0, columnspan=3, pady=10)
+        # Process buttons frame
+        process_frame = ttk.Frame(main_frame)
+        process_frame.grid(row=7, column=0, columnspan=3, pady=10)
+        
+        self.process_button = ttk.Button(process_frame, text="Concatenar Videos", command=self.start_processing)
+        self.process_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Checkbox for last frame capture
+        self.capture_frame_var = tk.BooleanVar(value=True)
+        capture_check = ttk.Checkbutton(process_frame, text="Capturar último frame", variable=self.capture_frame_var)
+        capture_check.pack(side=tk.LEFT)
         
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
@@ -172,6 +180,55 @@ class VideoConcat:
             self.cpu_usage_var.set("CPU: N/A")
         
         self.root.after(2000, self.monitor_cpu)
+    
+    def capture_last_frame(self, video_path, output_dir):
+        """Captura el último frame de un video"""
+        try:
+            video_name = os.path.splitext(os.path.basename(video_path))[0]
+            frame_path = os.path.join(output_dir, f"{video_name}_last_frame.png")
+            
+            # Comando FFmpeg para capturar el último frame
+            cmd = [
+                self.ffmpeg_path,
+                '-i', video_path,
+                '-vf', 'select=eq(n\\,0)',
+                '-vframes', '1',
+                '-f', 'image2',
+                '-y',  # Sobrescribir si existe
+                frame_path
+            ]
+            
+            # Para obtener el último frame, primero obtenemos la duración
+            duration_cmd = [
+                self.ffmpeg_path,
+                '-i', video_path,
+                '-f', 'null',
+                '-'
+            ]
+            
+            # Ejecutar comando para obtener duración
+            result = subprocess.run(duration_cmd, capture_output=True, text=True)
+            
+            # Extraer último frame usando seek to end-1 segundo
+            cmd_last = [
+                self.ffmpeg_path,
+                '-sseof', '-1',  # Seek to 1 second before end
+                '-i', video_path,
+                '-vframes', '1',
+                '-y',
+                frame_path
+            ]
+            
+            process = subprocess.run(cmd_last, capture_output=True, text=True)
+            
+            if process.returncode == 0 and os.path.exists(frame_path):
+                return frame_path
+            else:
+                return None
+                
+        except Exception as e:
+            print(f"Error capturando frame: {e}")
+            return None
     
     def start_processing(self):
         if self.is_processing:
@@ -294,8 +351,21 @@ class VideoConcat:
                 os.remove(temp_file)
             
             if process.returncode == 0:
+                success_msg = "Videos concatenados exitosamente"
+                
+                # Capturar último frame si está habilitado
+                if self.capture_frame_var.get():
+                    self.progress_var.set("Capturando último frame...")
+                    output_dir = os.path.dirname(output_path)
+                    frame_path = self.capture_last_frame(output_path, output_dir)
+                    
+                    if frame_path:
+                        success_msg += f"\n\nÚltimo frame guardado en:\n{frame_path}"
+                    else:
+                        success_msg += "\n\nAdvertencia: No se pudo capturar el último frame"
+                
                 self.progress_var.set("Concatenación completada exitosamente")
-                messagebox.showinfo("Éxito", "Videos concatenados exitosamente")
+                messagebox.showinfo("Éxito", success_msg)
             else:
                 self.progress_var.set("Error en la concatenación")
                 error_msg = stderr if stderr else stdout
