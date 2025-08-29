@@ -16,7 +16,8 @@ Una aplicación de escritorio con interfaz gráfica desarrollada en Python que p
 - 📁 **Validación automática** de archivos y extensiones
 - 🛡️ **Manejo robusto de errores** con logging detallado
 - 🧹 **Limpieza automática** de archivos temporales
-- 📸 **Captura de último frame** automática del video concatenado
+- 📸 **Extracción de último frame** independiente o durante concatenación
+- 🎯 **Modo dual**: Concatenar videos O extraer frames por separado
 
 ## 📋 Requisitos del Sistema
 
@@ -142,29 +143,41 @@ python main.py
    - **Laptop**: 60-70%
 2. **Verificar ruta FFmpeg**: Normalmente no necesitas cambiar esto
 
-#### Paso 6: Configurar Opciones Adicionales 📸
-- **Capturar último frame**: Mantén activada esta opción si quieres que se genere automáticamente una imagen PNG del último frame del video concatenado
-- Esta imagen se guardará en el mismo directorio que el video final con el nombre `[nombre_video]_last_frame.png`
+#### Paso 6: Elegir Modo de Operación 🎯
 
-#### Paso 7: Procesar Videos ▶️
+**Opción A: Solo Extraer Últimos Frames 📸**
+1. **Selecciona videos**: Agrega los videos de los cuales quieres extraer frames
+2. **Haz clic en "Extraer Último Frame"**
+3. **Selecciona carpeta**: Elige dónde guardar las imágenes PNG
+4. **Procesamiento**: La app extraerá el último frame de cada video seleccionado
+
+**Opción B: Concatenar Videos (con frame opcional) 🔗**
 1. **Verificar configuración**:
    - ✅ Videos en la lista en orden correcto
    - ✅ Archivo de salida configurado
    - ✅ Configuración de CPU ajustada
-   - ✅ Opción de captura de frame según preferencia
-2. **Iniciar proceso**: Haz clic en **"Concatenar Videos"**
-3. **Monitorear progreso**:
+2. **Configurar frame**: Marca/desmarca "También capturar frame al concatenar"
+3. **Iniciar proceso**: Haz clic en **"Concatenar Videos"**
+4. **Monitorear progreso**:
    - Observa la barra de progreso
    - Revisa el uso de CPU en tiempo real
    - La aplicación pausará FFmpeg si el CPU supera el límite
 
-#### Paso 8: Finalización ✅
-- **Éxito**: Aparecerá mensaje "Videos concatenados exitosamente"
+#### Paso 7: Finalización ✅
+
+**Para Extracción de Frames:**
+- **Éxito**: Mensaje con cantidad de frames extraídos y lista de archivos generados
+- **Archivos**: Se guardan como `[nombre_video]_last_frame.png` en la carpeta seleccionada
+
+**Para Concatenación:**
+- **Éxito**: Mensaje "Videos concatenados exitosamente"
   - Si activaste la captura de frame, también se mostrará la ruta del archivo PNG generado
-- **Error**: Revisa los archivos de log (`ffmpeg_error.log`, `app_error.log`)
 - **Archivos generados**:
   - Video concatenado: En la ubicación que especificaste
   - Último frame: `[nombre_video]_last_frame.png` (si está activado)
+
+**En caso de Error:**
+- Revisa los archivos de log (`ffmpeg_error.log`, `app_error.log`)
 
 ### 🎯 Consejos para Mejores Resultados
 
@@ -189,25 +202,26 @@ python main.py
 ### 🔄 Interfaz de Usuario
 
 ```
-┌─────────────────────────────────────────────────┐
-│ Videos a concatenar:                            │
-│ ┌─────────────────────────────────────────────┐ │
-│ │ video1.mp4                                  │ │
-│ │ video2.mp4                                  │ │
-│ │ video3.mp4                                  │ │
-│ └─────────────────────────────────────────────┘ │
-│ [Agregar Videos] [Quitar] [Limpiar] [⬆] [⬇]     │
-│                                                 │
-│ Archivo de salida: [_______________] [Seleccionar] │
-│                                                 │
-│ Configuración:                                  │
-│ Uso máximo CPU (%): [80]                        │
-│ Ruta FFmpeg: [ffmpeg]                           │
-│                                                 │
-│ Progreso: [████████████████████████████] CPU: 45% │
-│                                                 │
-│ [Concatenar Videos] ☑️ Capturar último frame    │
-└─────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│ Videos a concatenar:                                      │
+│ ┌───────────────────────────────────────────────────────┐ │
+│ │ video1.mp4                                            │ │
+│ │ video2.mp4                                            │ │
+│ │ video3.mp4                                            │ │
+│ └───────────────────────────────────────────────────────┘ │
+│ [Agregar Videos] [Quitar] [Limpiar] [⬆] [⬇]               │
+│                                                           │
+│ Archivo de salida: [_______________] [Seleccionar]        │
+│                                                           │
+│ Configuración:                                            │
+│ Uso máximo CPU (%): [80]                                  │
+│ Ruta FFmpeg: [ffmpeg]                                     │
+│                                                           │
+│ Progreso: [████████████████████████████] CPU: 45%        │
+│                                                           │
+│ [Concatenar Videos] [Extraer Último Frame]                │
+│                     ☑️ También capturar frame al concatenar│
+└───────────────────────────────────────────────────────────┘
 ```
 
 ## 🎥 Formatos Soportados

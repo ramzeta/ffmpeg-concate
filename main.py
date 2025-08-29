@@ -93,12 +93,16 @@ class VideoConcat:
         process_frame = ttk.Frame(main_frame)
         process_frame.grid(row=7, column=0, columnspan=3, pady=10)
         
-        self.process_button = ttk.Button(process_frame, text="Concatenar Videos", command=self.start_processing)
-        self.process_button.pack(side=tk.LEFT, padx=(0, 10))
+        # Main action buttons
+        self.concat_button = ttk.Button(process_frame, text="Concatenar Videos", command=self.start_concatenation)
+        self.concat_button.pack(side=tk.LEFT, padx=(0, 10))
         
-        # Checkbox for last frame capture
+        self.frame_button = ttk.Button(process_frame, text="Extraer Último Frame", command=self.start_frame_extraction)
+        self.frame_button.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Checkbox for frame capture during concatenation
         self.capture_frame_var = tk.BooleanVar(value=True)
-        capture_check = ttk.Checkbutton(process_frame, text="Capturar último frame", variable=self.capture_frame_var)
+        capture_check = ttk.Checkbutton(process_frame, text="También capturar frame al concatenar", variable=self.capture_frame_var)
         capture_check.pack(side=tk.LEFT)
         
         # Configure grid weights
@@ -230,7 +234,7 @@ class VideoConcat:
             print(f"Error capturando frame: {e}")
             return None
     
-    def start_processing(self):
+    def start_concatenation(self):
         if self.is_processing:
             messagebox.showwarning("Advertencia", "Ya se está procesando un video")
             return
@@ -264,13 +268,100 @@ class VideoConcat:
         self.ffmpeg_path = self.ffmpeg_var.get()
         
         self.is_processing = True
-        self.process_button.config(state="disabled")
+        self.concat_button.config(state="disabled")
+        self.frame_button.config(state="disabled")
         self.progress_bar.start()
         self.progress_var.set("Iniciando concatenación...")
         
         thread = threading.Thread(target=self.process_videos)
         thread.daemon = True
         thread.start()
+    
+    def start_frame_extraction(self):
+        """Iniciar extracción de último frame de videos seleccionados"""
+        if self.is_processing:
+            messagebox.showwarning("Advertencia", "Ya se está procesando")
+            return
+        
+        if not self.video_files:
+            messagebox.showerror("Error", "No hay videos seleccionados")
+            return
+        
+        # Preguntar dónde guardar los frames
+        output_dir = filedialog.askdirectory(title="Seleccionar carpeta para guardar frames")
+        if not output_dir:
+            return
+        
+        self.is_processing = True
+        self.concat_button.config(state="disabled")
+        self.frame_button.config(state="disabled")
+        self.progress_bar.start()
+        self.progress_var.set("Extrayendo últimos frames...")
+        
+        thread = threading.Thread(target=self.extract_frames_only, args=(output_dir,))
+        thread.daemon = True
+        thread.start()
+    
+    def extract_frames_only(self, output_dir):
+        """Extraer último frame de cada video seleccionado"""
+        try:
+            extracted_frames = []
+            failed_extractions = []
+            total_videos = len(self.video_files)
+            
+            for i, video_file in enumerate(self.video_files):
+                self.progress_var.set(f"Extrayendo frame {i+1}/{total_videos}...")
+                
+                # Verificar que el archivo existe
+                if not os.path.exists(video_file):
+                    failed_extractions.append(f"{os.path.basename(video_file)} - Archivo no encontrado")
+                    continue
+                
+                frame_path = self.capture_last_frame(video_file, output_dir)
+                
+                if frame_path:
+                    extracted_frames.append(frame_path)
+                else:
+                    failed_extractions.append(f"{os.path.basename(video_file)} - Error al extraer frame")
+            
+            # Mostrar resultados
+            if extracted_frames:
+                success_msg = f"Frames extraídos exitosamente: {len(extracted_frames)}\n\n"
+                success_msg += "Archivos generados:\n"
+                for frame in extracted_frames[:5]:  # Mostrar máximo 5
+                    success_msg += f"• {os.path.basename(frame)}\n"
+                if len(extracted_frames) > 5:
+                    success_msg += f"... y {len(extracted_frames) - 5} más"
+                    
+                if failed_extractions:
+                    success_msg += f"\n\nAdvertencias ({len(failed_extractions)} fallos):\n"
+                    for failure in failed_extractions[:3]:
+                        success_msg += f"• {failure}\n"
+                    if len(failed_extractions) > 3:
+                        success_msg += f"... y {len(failed_extractions) - 3} más"
+                
+                self.progress_var.set("Extracción completada")
+                messagebox.showinfo("Éxito", success_msg)
+            else:
+                self.progress_var.set("Error en la extracción")
+                error_msg = "No se pudo extraer ningún frame.\n\nErrores:\n"
+                for failure in failed_extractions[:5]:
+                    error_msg += f"• {failure}\n"
+                messagebox.showerror("Error", error_msg)
+                
+        except Exception as e:
+            self.progress_var.set("Error inesperado")
+            import traceback
+            error_details = traceback.format_exc()
+            with open('app_error.log', 'w') as f:
+                f.write(error_details)
+            messagebox.showerror("Error", f"Error inesperado: {str(e)}\n\nRevisa app_error.log para más detalles")
+        
+        finally:
+            self.is_processing = False
+            self.concat_button.config(state="normal")
+            self.frame_button.config(state="normal")
+            self.progress_bar.stop()
     
     def process_videos(self):
         try:
@@ -387,7 +478,8 @@ class VideoConcat:
         
         finally:
             self.is_processing = False
-            self.process_button.config(state="normal")
+            self.concat_button.config(state="normal")
+            self.frame_button.config(state="normal")
             self.progress_bar.stop()
             # Limpiar archivo temporal si existe
             if 'temp_file' in locals() and os.path.exists(temp_file):
