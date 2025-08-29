@@ -154,6 +154,9 @@ class VideoConcat:
         info_text = "Modos: rápido=sin pérdida, gpu=CUDA optimizado, calidad=máxima compatibilidad, turbo=90% recursos"
         ttk.Label(info_frame, text=info_text, font=("Arial", 8), foreground="gray").pack()
         
+        # GitHub star request panel
+        self.show_github_star_request()
+        
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
@@ -290,6 +293,38 @@ class VideoConcat:
         self.frame_button.config(state="normal") 
         self.enhance_button.config(state="normal")
         self.stop_button.config(state="disabled")
+    
+    def show_github_star_request(self):
+        """Mostrar panel para solicitar estrella en GitHub"""
+        # Solo mostrar el popup al iniciar la aplicación
+        def show_star_popup():
+            import webbrowser
+            
+            response = messagebox.askyesno(
+                "⭐ ¡Dame una estrella en GitHub!",
+                "¡Hola! Si esta aplicación te está siendo útil para concatenar tus videos,\n" +
+                "me ayudarías mucho dándole una estrella ⭐ en GitHub.\n\n" +
+                "¿Te gustaría visitar el repositorio para dar tu estrella?\n\n" +
+                "¡Gracias por usar COCAT! 🎬",
+                icon='question'
+            )
+            
+            if response:
+                # Abrir el repositorio de GitHub en el navegador
+                github_url = "https://github.com/usuario/cocat"
+                try:
+                    webbrowser.open(github_url)
+                except Exception as e:
+                    # Si no se puede abrir el navegador, mostrar el enlace
+                    messagebox.showinfo(
+                        "Enlace de GitHub",
+                        f"No se pudo abrir el navegador automáticamente.\n\n" +
+                        f"Por favor visita manualmente:\n{github_url}\n\n" +
+                        f"¡Gracias por tu apoyo! ⭐"
+                    )
+        
+        # Mostrar popup después de que la ventana esté completamente cargada
+        self.root.after(1000, show_star_popup)
     
     def check_cuda_support(self):
         """Verificar si CUDA está disponible en FFmpeg"""
